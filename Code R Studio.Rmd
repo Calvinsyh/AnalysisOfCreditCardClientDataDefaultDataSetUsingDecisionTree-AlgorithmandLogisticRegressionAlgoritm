@@ -1,0 +1,249 @@
+---
+title: "StudyCase1 Group B8"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#Load Library
+  library(tidyverse)
+  library(readxl)
+  library(knitr) 
+  library(dplyr)
+  library(lattice)
+  library(caret)
+  library(psych)
+  library(Amelia)
+  library(mice)
+  library(klaR)
+  library(vcd)
+  library(GGally)
+```
+
+## Visualisasi Data
+
+```{r}
+#a.--Attributes--- 
+  
+  # ID: ID of each client
+  # LIMIT_BAL: Amount of given credit in NT dollars (includes individual and family/supplementary credit
+  # SEX: Gender (1=male, 2=female)
+
+  # EDUCATION: (1=graduate school, 2=university, 3=high school, 4=others, 5=unknown, 6=unknown)
+
+  # MARRIAGE: Marital status (1=married, 2=single, 3=others)
+
+  # AGE: Age in years
+  # PAY_0: Repayment status in September, 2005 (-1=pay duly, 1=payment delay for one month, 2=payment delay for two months, … 8=payment delay for eight months, 9=payment delay for nine months and above)
+  # PAY_2: Repayment status in August, 2005 (scale same as above)
+  # PAY_3: Repayment status in July, 2005 (scale same as above)
+  # PAY_4: Repayment status in June, 2005 (scale same as above)
+  # PAY_5: Repayment status in May, 2005 (scale same as above)
+  # PAY_6: Repayment status in April, 2005 (scale same as above)
+  # BILL_AMT1: Amount of bill statement in September, 2005 (NT dollar)
+  # BILL_AMT2: Amount of bill statement in August, 2005 (NT dollar)
+  # BILL_AMT3: Amount of bill statement in July, 2005 (NT dollar)
+  # BILL_AMT4: Amount of bill statement in June, 2005 (NT dollar)
+  # BILL_AMT5: Amount of bill statement in May, 2005 (NT dollar)
+  # BILL_AMT6: Amount of bill statement in April, 2005 (NT dollar)
+  # PAY_AMT1: Amount of previous payment in September, 2005 (NT dollar)
+  # PAY_AMT2: Amount of previous payment in August, 2005 (NT dollar)
+  # PAY_AMT3: Amount of previous payment in July, 2005 (NT dollar)
+  # PAY_AMT4: Amount of previous payment in June, 2005 (NT dollar)
+  # PAY_AMT5: Amount of previous payment in May, 2005 (NT dollar)
+  # PAY_AMT6: Amount of previous payment in April, 2005 (NT dollar)
+  # default.payment.next.month: Default payment (1=yes, 0=no)
+
+
+#b.-----read data----
+  B8 <- read_excel("B8_Muhamad Calvin Syah Putra_00000052170.xlsx", skip = 1, col_names = TRUE)
+  names(B8)[names(B8) == "default payment next month"] <- "default_payment"
+
+  #Visualization Data
+  B8$AGE<-cut(B8$AGE, breaks = c( 10, 30,50,100), labels = c("young", "middle","senior"))
+  B8$SEX<-cut(B8$SEX, 2,labels = c("Female","Male"))
+  B8$MARRIAGE<-cut(B8$MARRIAGE, 4,labels = c("married","single","Devorce","other"))
+  #coverting few intigers to categorical
+  convertcat <- c(3:5)
+  B8[,convertcat] <- data.frame(apply(B8[convertcat],2, as.factor))
+  #converting default paymnet variable to categorical
+  B8$default_payment<-as.factor(B8$default_payment)
+  str(B8)
+  
+  ggplot(data=B8,mapping = aes(x=AGE,y=B8$LIMIT_BAL,fill=default_payment))+labs(x ="AGE", y = "Limit Balance") + geom_boxplot()
+  
+  ggplot(data=B8, mapping = aes(x=MARRIAGE, fill=default_payment)) + geom_bar()
+  
+  B8 %>% group_by(EDUCATION,AGE) %>% summarise(mn_B8lmt = mean(LIMIT_BAL), .groups = "drop") -> df
+  ggplot(df, aes(EDUCATION, AGE, fill=mn_B8lmt)) + geom_tile() + scale_fill_gradient(low="white", high="steelblue")
+  
+  B8 %>% group_by(EDUCATION,AGE) %>% summarise(mn_B8lmt=mean(LIMIT_BAL), .groups = "drop") -> df
+  ggplot(df, aes(EDUCATION, AGE, fill=mn_B8lmt)) + geom_tile() + scale_fill_gradient(low="white", high="steelblue")
+  
+  ggplot(data=B8, mapping = aes(x=SEX, fill=default_payment)) + geom_bar()
+  
+  
+  
+#Read Data Again 
+  B8 <- read_excel("B8_Muhamad Calvin Syah Putra_00000052170.xlsx", skip = 1, col_names = TRUE)
+  B8[3:5] <- lapply(B8[3:5], as.factor)
+  B8[7:12] <- lapply(B8[7:12], as.factor)
+  names(B8)[names(B8) == "default payment next month"] <- "default_payment"
+  B8$default_payment <- as.factor(B8$default_payment)
+  B8 = B8[-1]
+  str(B8)
+  
+  B8$default_payment <- factor(B8$default_payment, levels=0:1, labels=c("No","Yes"))
+   B8$SEX<-factor(B8$SEX, levels=1:2, labels=c("Male", "Female"))
+  
+   summary(B8)
+  
+
+
+```
+
+## Logistic Regression
+
+```{r}
+  B8$SEX<- as.factor(B8$SEX)
+  B8$EDUCATION<-as.factor(B8$EDUCATION)
+  B8$MARRIAGE<-as.factor(B8$MARRIAGE)
+  B8$default<-as.factor(B8$default_payment)
+  
+  levels(B8$default) <- c("0","1")
+  levels(B8$default)
+  
+  B8$default<-ordered(B8$default, levels = c("1","0"))
+  levels(B8$default)
+  
+
+seed <- 052170
+  set.seed(052170)
+  samp <- sample(nrow(B8), 0.6 * nrow(B8))
+  train <- B8[samp, ]
+  test <- B8[-samp, ]
+  nrow(train)
+  nrow(test)
+  
+  round(prop.table(table(train$default))*100,2)
+  
+  B8logit_2<-glm(default ~ LIMIT_BAL + EDUCATION + PAY_0  + PAY_3 + PAY_4 + PAY_5 + PAY_6 + PAY_AMT1 + PAY_AMT2 + 
+               PAY_AMT4 + PAY_AMT5 + PAY_AMT6, train, family='binomial')
+  
+  summary(B8logit_2)
+  
+  B8logit_21 <- na.omit(B8logit_2)
+  
+  B8pred_2<-predict(B8logit_21,train,type='response')
+  pred2<-ifelse(B8pred_2>0.5, 0,1)
+
+
+#Predict
+y_pred <- factor(pred2, levels = c(1,0))
+y_act <- train$B8pred_2
+mean(y_pred == y_act) 
+
+
+#Confusion Mstratrix
+table <- table(y_pred,train$default)
+confusionMatrix(table)
+
+library(caret)
+ggplot(train, aes(default, y_pred, color = default)) +
+  geom_jitter(width = 0.2, height = 0.1, size = 2) +
+  labs(title = "Predicted vs Observed from default_payment", subtitle = "Muhammad Calvin syah putra - 00000052170", x = "Truth", y = "Predicted", caption = "credit card")
+  
+
+
+
+
+```
+## Decision Tree => (M Calviansyah)
+
+```{r}
+  #a.---------Read Data-----------
+  B8 <- read_excel("B8_Muhamad Calvin Syah Putra_00000052170.xlsx", skip = 1, col_names = TRUE)
+  B8[3:5] <- lapply(B8[3:5], as.factor)
+  B8[7:12] <- lapply(B8[7:12], as.factor)
+  names(B8)[names(B8) == "default payment next month"] <- "default_payment"
+  B8$default_payment <- as.factor(B8$default_payment)
+  B8 = B8[-1]
+  str(B8)
+  
+  B8$default_payment <- factor(B8$default_payment, levels=0:1, labels=c("No","Yes"))
+   B8$SEX<-factor(B8$SEX, levels=1:2, labels=c("Male", "Female"))
+  
+   summary(B8)
+
+
+
+
+  #b.------Decision Tree-------
+    seed <- 052170
+    set.seed(052170)
+    samp_b8 <- sample(NROW(B8), 0.6*NROW(B8), replace = FALSE)
+    training <- B8[samp_b8,]
+    testing <- B8[-samp_b8,]
+    
+    #Using Party
+    library(party)
+    data_ctree <- ctree(training$default_payment ~., data = training)
+    plot(data_ctree, type="simple")
+    print(data_ctree)
+    
+    predict_ctree <- predict(data_ctree, testing, type = "response")
+    plot(data_ctree)
+  
+    table_ctree = table(predict_ctree,testing$default_payment)
+    confusionMatrix(table_ctree)
+    #Accuracy 0.8156 or 81.56 %
+    
+    #using part
+    library(rpart)
+    library(rpart.plot)
+
+    dat_rpart <- rpart(training$default_payment ~., data = training)
+    rpart.plot(dat_rpart, box.palette="08", shadow.col="gray", nn=TRUE)
+    print(dat_rpart)
+    
+    predict_rpart <- predict(dat_rpart, testing, type = "class")
+    
+    table_rpart <- table(predict_ctree,testing$default_payment)
+    confusionMatrix(table_rpart)
+    
+    #plot model 
+    rpart.plot(dat_rpart, box.palette="08", shadow.col="gray", nn=TRUE)
+    
+    #plot 
+    plot(table_ctree)
+    
+    #print
+    print(dat_rpart)
+    print(data_ctree)
+    
+    #confusion
+    confusionMatrix(table_rpart)
+    confusionMatrix(table_ctree)
+
+
+
+```
+#Evaluate and Comparison 2 algorithm 
+```{r}
+#Logistic Regression
+confusion_matrix<-table(pred2, train$default)
+print(confusion_matrix)
+Accuracy<-sum(diag(confusion_matrix))/sum(confusion_matrix)
+print(Accuracy*100)
+
+#Decision tree
+confusionMatrix(table_ctree)
+
+
+```
+
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
